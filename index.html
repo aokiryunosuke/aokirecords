@@ -4,6 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AOKI RECORDS</title>
+  <!-- ▼ Favicon（ファイルをご用意ください） -->
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/favicon-32.png" sizes="32x32">
+  <link rel="icon" type="image/png" href="/favicon-16.png" sizes="16x16">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff">
+  
   <style>
     /* ===== Base ===== */
     html, body { margin:0; padding:0; background:#ffffff; color:#111; font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans JP, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; }
@@ -11,32 +18,22 @@
     /* ページ左右の余白を最小化。要素は中央寄せ */
     .wrap { width:100%; margin:0 auto; padding:0; display:flex; justify-content:center; }
 
-    /* 画像舞台。背景は黒ではなく白に（＝全体白） */
-    .stage { width:100%; max-width:600px; /* PCでは少し小さめに表示 */
-      line-height:0; /* 画像の下の余白を消す */
-    }
+    /* 画像舞台。PCでは少し小さめ。右下のカウンタを重ねるので relative 指定 */
+    .stage { width:100%; max-width:600px; line-height:0; position:relative; }
 
     /* SVGは常にコンテナ幅ぴったり（モバイルは画面幅と一致） */
     .stage svg { display:block; width:100%; height:auto; }
 
     /* モバイル最適化：幅はデバイス幅にフィット */
-    @media (max-width: 767px) {
-      .stage { max-width:none; width:100vw; }
-    }
+    @media (max-width: 767px) { .stage { max-width:none; width:100vw; } }
 
     /* フッターは最小限（© のみ） */
     footer { text-align:center; font-size:12px; color:#222; margin:12px 0 24px; }
-    /* ===== Visitor counter (top-right) ===== */
-    .visit-counter { position: fixed; top: 12px; right: 12px; z-index: 50; }
-    .visit-chip {
-      display:inline-flex; align-items:center; gap:8px;
-      padding:6px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.08);
-      background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
-      box-shadow: 0 4px 12px rgba(0,0,0,.06);
-      font-size: 12px; line-height: 1; color:#222; user-select:none;
-    }
-    .visit-dot { width:8px; height:8px; border-radius:50%; background:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.18); }
-    @media (max-width: 767px){ .visit-counter{ top:8px; right:8px; } .visit-chip{ padding:6px 9px; } }
+
+    /* ===== Visitor counter（数字だけ／画像右下に重ねる） ===== */
+    .visit-counter { position:absolute; right:8px; bottom:8px; z-index:10; pointer-events:none; }
+    .visit-counter .num { font-size:14px; font-weight:700; letter-spacing: .02em; color:#111; background: rgba(255,255,255,.85); padding:4px 6px; border-radius:6px; border:1px solid rgba(0,0,0,.08); box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+    @media (max-width: 767px){ .visit-counter .num{ font-size:12px; padding:3px 5px; } }
   </style>
 </head>
 <body>
@@ -64,57 +61,37 @@
           <circle cx="820" cy="1210" r="120" fill="transparent" stroke="transparent" />
         </a>
       </svg>
+
+      <!-- 右下に数字だけの訪問カウント（画像に重ねる） -->
+      <div class="visit-counter"><span id="visit-count" class="num">—</span></div>
+
       <footer>© AOKI RECORDS</footer>
     </main>
   </div>
-  <div class="visit-counter" aria-live="polite" aria-atomic="true">
-    <div class="visit-chip" id="visit-chip" title="このページの累計訪問数">
-      <span class="visit-dot" aria-hidden="true"></span>
-      <span id="visit-label">訪問数</span>
-      <strong id="visit-count" style="font-variant-numeric: tabular-nums;">—</strong>
-    </div>
-  </div>
 
   <script>
-    // 軽量なカウンター（サーバーレス）。countapi を利用（匿名・Cookieなし）。
-    // 名前空間とキーはサイトごとに固有にしてください。
+    // CountAPI で累計訪問数を加算＆取得。失敗時は端末ローカル回数を表示
     (function(){
-      const NS = 'aoki-records.github.io';   // ←あなたの公開URLに合わせて変更可
-      const KEY = 'home';                    // ページ単位のキー
+      const NS = 'aokiryunosuke.github.io/aokirecords'; // いまの公開URLに合わせた名前空間
+      const KEY = 'homepage';
       const $count = document.getElementById('visit-count');
-      const $label = document.getElementById('visit-label');
-
-      async function hit(endpoint){
-        const r = await fetch(`${endpoint}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}`);
+      async function hit(ep){
+        const r = await fetch(`${ep}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}`);
         if(!r.ok) throw new Error('HTTP '+r.status);
         const json = await r.json();
         return json && (json.value || json.count || json.usage) || 0;
       }
-
-      (async ()=>{
-        try {
-          // 複数エンドポイントを試す（サービス仕様の差異に対応）
-          const endpoints = [
-            'https://api.countapi.dev',
-            'https://api.countapi.xyz'
-          ];
-          let value = null;
-          for(const ep of endpoints){
-            try { value = await hit(ep); break; } catch(e) { /* 次の候補へ */ }
-          }
-          if(value == null) throw new Error('No endpoint succeeded');
-          $count.textContent = value.toLocaleString('ja-JP');
-        } catch(err){
-          // フォールバック：ローカル（デバイス単位）カウント
-          try {
-            const k = 'local_visit_count_'+NS+'_'+KEY;
-            const v = (parseInt(localStorage.getItem(k)||'0',10)+1) || 1;
-            localStorage.setItem(k, v);
-            $label.textContent = 'この端末の訪問数';
+      (async()=>{
+        try{
+          const eps = ['https://api.countapi.dev','https://api.countapi.xyz'];
+          let val=null; for(const ep of eps){ try{ val = await hit(ep); break; }catch(e){} }
+          if(val==null) throw new Error('no endpoint');
+          $count.textContent = val.toLocaleString('ja-JP');
+        }catch(err){
+          try{
+            const k = 'local_visit_'+NS+'_'+KEY; const v=(+localStorage.getItem(k)||0)+1; localStorage.setItem(k, v);
             $count.textContent = v.toLocaleString('ja-JP');
-          } catch(_) {
-            document.getElementById('visit-chip').style.display = 'none';
-          }
+          }catch(_){ $count.textContent = '0'; }
         }
       })();
     })();
