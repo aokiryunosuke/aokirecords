@@ -57,21 +57,44 @@
       const NS  = 'aokirecords';
       const KEY = 'homepage';
       const $count = document.getElementById('visit-count');
-      async function hit(ep){
-        const r = await fetch(`${ep}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}`);
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        const json = await r.json();
-        return (json && (json.value || json.count || json.usage)) || 0;
+      const endpoints = ['https://api.countapi.dev','https://api.countapi.xyz'];
+      const TIMEOUT_MS = 5000;
+
+      function withTimeout(fn, ms){
+        const ctrl = new AbortController();
+        const id = setTimeout(()=>ctrl.abort(), ms);
+        return { promise: fn(ctrl.signal).finally(()=>clearTimeout(id)) };
       }
-      (async()=>{
-        try{
-          const eps = ['https://api.countapi.dev','https://api.countapi.xyz'];
-          let val=null; for(const ep of eps){ try{ val = await hit(ep); break; }catch(e){} }
-          if(val==null) throw new Error('no endpoint');
-          $count.textContent = val.toLocaleString('ja-JP');
-        }catch(err){
-          $count.textContent = '—';
+
+      async function req(url, signal){
+        const r = await fetch(url, {mode:'cors', cache:'no-store', signal});
+        const json = await r.json().catch(()=>({}));
+        return {status:r.status, json};
+      }
+
+      async function ensure(ep, signal){
+        let res = await req(`${ep}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}`, signal);
+        if(res.status === 404){
+          await req(`${ep}/create?namespace=${encodeURIComponent(NS)}&key=${encodeURIComponent(KEY)}&value=0&update_lowerbound=0`, signal);
+          res = await req(`${ep}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}`, signal);
         }
+        if(res.status >= 200 && res.status < 300){
+          const val = (res.json && (res.json.value || res.json.count || res.json.usage)) || 0;
+          return val;
+        }
+        throw new Error('counter failed: '+res.status);
+      }
+
+      (async()=>{
+        for(const ep of endpoints){
+          try{
+            const {promise} = withTimeout((sig)=>ensure(ep, sig), TIMEOUT_MS);
+            const val = await promise;
+            $count.textContent = Number(val).toLocaleString('ja-JP');
+            return;
+          }catch(e){ /* try next */ }
+        }
+        $count.textContent = '—';
       })();
     })();
   </script>
