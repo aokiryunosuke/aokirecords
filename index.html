@@ -26,6 +26,17 @@
 
     /* フッターは最小限（© のみ） */
     footer { text-align:center; font-size:12px; color:#222; margin:12px 0 24px; }
+    /* ===== Visitor counter (top-right) ===== */
+    .visit-counter { position: fixed; top: 12px; right: 12px; z-index: 50; }
+    .visit-chip {
+      display:inline-flex; align-items:center; gap:8px;
+      padding:6px 10px; border-radius:999px; border:1px solid rgba(0,0,0,.08);
+      background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
+      box-shadow: 0 4px 12px rgba(0,0,0,.06);
+      font-size: 12px; line-height: 1; color:#222; user-select:none;
+    }
+    .visit-dot { width:8px; height:8px; border-radius:50%; background:#16a34a; box-shadow:0 0 0 3px rgba(22,163,74,.18); }
+    @media (max-width: 767px){ .visit-counter{ top:8px; right:8px; } .visit-chip{ padding:6px 9px; } }
   </style>
 </head>
 <body>
@@ -56,5 +67,57 @@
       <footer>© AOKI RECORDS</footer>
     </main>
   </div>
+  <div class="visit-counter" aria-live="polite" aria-atomic="true">
+    <div class="visit-chip" id="visit-chip" title="このページの累計訪問数">
+      <span class="visit-dot" aria-hidden="true"></span>
+      <span id="visit-label">訪問数</span>
+      <strong id="visit-count" style="font-variant-numeric: tabular-nums;">—</strong>
+    </div>
+  </div>
+
+  <script>
+    // 軽量なカウンター（サーバーレス）。countapi を利用（匿名・Cookieなし）。
+    // 名前空間とキーはサイトごとに固有にしてください。
+    (function(){
+      const NS = 'aoki-records.github.io';   // ←あなたの公開URLに合わせて変更可
+      const KEY = 'home';                    // ページ単位のキー
+      const $count = document.getElementById('visit-count');
+      const $label = document.getElementById('visit-label');
+
+      async function hit(endpoint){
+        const r = await fetch(`${endpoint}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(KEY)}`);
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const json = await r.json();
+        return json && (json.value || json.count || json.usage) || 0;
+      }
+
+      (async ()=>{
+        try {
+          // 複数エンドポイントを試す（サービス仕様の差異に対応）
+          const endpoints = [
+            'https://api.countapi.dev',
+            'https://api.countapi.xyz'
+          ];
+          let value = null;
+          for(const ep of endpoints){
+            try { value = await hit(ep); break; } catch(e) { /* 次の候補へ */ }
+          }
+          if(value == null) throw new Error('No endpoint succeeded');
+          $count.textContent = value.toLocaleString('ja-JP');
+        } catch(err){
+          // フォールバック：ローカル（デバイス単位）カウント
+          try {
+            const k = 'local_visit_count_'+NS+'_'+KEY;
+            const v = (parseInt(localStorage.getItem(k)||'0',10)+1) || 1;
+            localStorage.setItem(k, v);
+            $label.textContent = 'この端末の訪問数';
+            $count.textContent = v.toLocaleString('ja-JP');
+          } catch(_) {
+            document.getElementById('visit-chip').style.display = 'none';
+          }
+        }
+      })();
+    })();
+  </script>
 </body>
 </html>
